@@ -1,0 +1,30 @@
+Self-evaluation
+How physically fit are you? 1-5
+How attractive are you? 1-5
+How social are you? 1-5
+
+Preference
+What's your favorite subject at school? math / science / language / social / sports / others
+What's your favorite movie genre? action / drama / horror / comedy / fantasy / sci-fi / romance / others
+What's more important: feeling or reason? 1-5
+Are you a good judge of character? 1-5
+What do you believe more: intuition or evidence? 1-5
+
+Behavioral
+Do you have someone you like? yes/no
+When do you usually go to sleep? 19-21 / 21-23 / 23-2 / later than 2 
+How much time you spent on your phone a day? numerical
+What social networks are you on? LINE / Facebook / Twitter / Instagram / Snapchat / WhatsApp / WeChat
+What do you usually do in your free time? sports / video games / watching videos / reading / hanging out with friends / club activities / others
+How many friends do you have? numerical
+How many friends of different gender do you have? numerical
+
+Personal Background
+How old are you? numerical
+What gender are you? male / female / gay / lesbian / non-binary / others
+What's your weight? numerical
+What's your height? numerical
+What's your GPA? 0-4
+How many relationships have you been into? numerical
+How many siblings do you have? numerical
+What order of siblings are you? numerical

@@ -1,0 +1,346 @@
+---
+title: "คุณมีแฟนหรือไม่ รู้ได้ด้วย Data Science"
+output: 
+  flexdashboard::flex_dashboard:
+    social: menu
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+les_packages <- lapply(c('xgboost','Matrix','ade4','tidyverse','flexdashboard','d3heatmap',
+                         'rBayesianOptimization','rpart','rpart.plot','ggthemes','DT','reshape2','dplyr'),
+                       require, character.only = TRUE)
+
+input_path <- '../files/'
+
+survey_sample = readRDS(paste0(input_path,'survey_sample.rds'))
+selected='y|hob|sub|past|gpa|weight|height|age|attract|social|physical'
+survey_sample = survey_sample[,grepl(selected,names(survey_sample))] %>%
+  select(-order.only,-order.youngest)
+inTrain = KFold(survey_sample$y,nfold = 10, stratified = TRUE, seed = 1412)
+train_set = survey_sample[unlist(inTrain[1:7]),]
+test_set = survey_sample[unlist(inTrain[8:10]),]
+
+dtrain <- xgb.DMatrix(data.matrix(train_set[,2:dim(train_set)[2]]), label = train_set$y)
+dtest <- xgb.DMatrix(data.matrix(test_set[,2:dim(train_set)[2]]), label = test_set$y)
+watchlist = list(eval=dtest, train = dtrain)
+
+#fitting
+params = list(eval_metric = 'auc',nthread = 4, objective = "binary:logistic",
+                 booster = 'gbtree', verbose = 0)
+
+fit = xgb.train(params=params,data = dtrain, nrounds = 20, watchlist=watchlist, silent = 1)
+```
+
+แบบสอบถาม
+=====================================
+
+Column {data-width=300}
+-----------------------------------------------------------------------
+
+### กรุณากรอกข้อมูลต่อไปนี้เพื่อรับคำทำนาย
+
+```{r}
+inputPanel(
+	sliderInput("physical", "คุณร่างกายแข็งแรงแค่ไหน", min = 1, max = 5, value = 3),
+	sliderInput("attract", "คุณหล่อ/สวยแค่ไหน",min = 1, max = 5, value = 3),
+	sliderInput("social", "คุณเป็นคนเข้าสังคมแค่ไหน",min = 1, max = 5, value =3))
+inputPanel(
+	numericInput("past","คุณเคยมีแฟนมาแล้วกี่คน?",min = 0, value = 0,step=1),
+	numericInput("gpa","คุณได้ GPA เท่าไหร่? (0.00 - 4.00)",min = 0, max = 4, value = 2)
+  )
+# inputPanel(
+# 	sliderInput("exhibit", "คุณชอบนิทรรศการนี้แค่ไหน", min = 1, max = 5, value = 3)
+# 	)
+```
+
+Column {data-width=300}
+-----------------------------------------------------------------------
+
+### วิชาโปรดของคุณคืออะไร
+
+```{r}
+inputPanel(
+   checkboxInput("sub_math", "คณิตศาสตร์", FALSE),
+   checkboxInput("sub_sceince", "วิทยาศาสตร์", FALSE),
+   checkboxInput("sub_language", "ภาษา", FALSE),
+   checkboxInput("sub_social", "สังคม", FALSE),
+   checkboxInput("sub_pe", "พละ", FALSE),
+   checkboxInput("sub_others", "อื่นๆ", FALSE))
+inputPanel(
+   numericInput("age","อายุ (ปี)",min = 0, value = 16),
+   numericInput("weight","น้ำหนัก (kg)",min = 0, value = 70),
+	 numericInput("height","ส่วนสูง (cm)",min = 0, value = 170)
+)
+
+```
+
+Column {data-width=300}
+-----------------------------------------------------------------------
+
+### ปกติคุณทำอะไรในเวลาว่าง
+
+```{r}
+inputPanel(
+   checkboxInput("hob_sports", "เล่นกีฬา", FALSE),
+   checkboxInput("hob_games", "เล่นเกม", FALSE),
+   checkboxInput("hob_video", "ดูวีดีโอ-ทีวี", FALSE),
+   checkboxInput("hob_reading", "อ่านหนังสือ", FALSE),
+   checkboxInput("hob_friends", "เที่ยวกับเพื่อน", FALSE),
+   checkboxInput("hob_club", "ทำกิจกรรมชมรม", FALSE),
+   checkboxInput("hob_others", "อื่นๆ", FALSE)
+)
+
+result = reactive({
+  temp=data.frame(age=input$age,
+                  weight=input$weight,
+                  height=input$height,
+                  gpa=input$gpa,
+                  past=input$past,
+                  physical=input$physical,
+                  attract=input$attract,
+                  social=input$social,
+                  sub_math=sum(input$sub_math),
+                  sub_science=sum(input$sub_science),
+                  sub_language=sum(input$sub_language),
+                  sub_social=sum(input$sub_social),
+                  sub_pe=sum(input$sub_pe),
+                  sub_others=sum(input$sub_others),
+                  hob_sports=sum(input$hob_sports),
+                  hob_games=sum(input$hob_games),
+                  hob_video=sum(input$hob_video),
+                  hob_friends=sum(input$hob_friends),
+                  hob_reading=sum(input$hob_reading),
+                  hob_club=sum(input$hob_club),
+                  hob_others=sum(input$hob_others)
+                  ) 
+  temp = data.frame(apply(temp,1,as.numeric) %>% t)
+  dtemp <- xgb.DMatrix(data.matrix(temp))
+  pred = predict(fit,dtemp)
+  paste0(round(100*pred,2),'%')
+  })
+
+```
+
+<br/><br/>
+
+<p style='font-size: 30px; text-align:center'>คุณมีโอกาสมีแฟน</p>
+<p style='font-size: 60px; text-align:center'> `r result` </p>
+
+Categorical Variables
+=====================================
+
+Inputs {.sidebar}
+-------------------------------------
+
+<br/>
+
+<strong>Categorical Variable</strong> คือตัวแปรที่มีค่าเป็น "ลักษณะ" ไม่ใช่ "ตัวเลข" เช่น เพศ (ชาย-หญิง-อื่นๆ) วิชาที่ชอบ กิจกรรมยามว่าง หรือแม้แต่ตัวแปรที่เรากำหนดให้เป็นช่วง เช่น เวลาเข้านอน
+
+แผนภูมิทางด้านขวาคือ Bar Chart ที่แสดงให้เห็นถึงจำนวนของผู้ตอบแบบสอบถามที่มีลักษณะนั้นๆ
+
+gender: เพศ<br/>
+hob: กิจกรรมยามว่าง<br/>
+mov: หนังที่ดู<br/>
+nb_diff: จำนวนเพื่อนต่างเพศ<br/>
+nb_friends: จำนวนเพื่อน<br/>
+onphone: เวลาที่ใช้กับมือถือต่อวัน<br/>
+order: ลำดับพี่น้อง<br/>
+slp: เวลาเข้านอน<br/>
+sns: โซเชียลเน็ตเวิร์คที่เล่น<br/>
+sub: วิชาที่ชอบ<br/>
+
+
+Column
+-------------------------------------
+
+```{r,fig.width=10,fig.height=7, fig.align='center'}
+mult_df = readRDS(paste0(input_path,'mult_df.rds'))
+
+g = ggplot(mult_df,aes(x=variable,y=per,fill=col)) + geom_bar(stat='identity') +
+  facet_wrap(~col,ncol = 5,scale='free') + theme_fivethirtyeight() + 
+  scale_y_continuous(labels = scales::percent) +
+  theme(legend.position = 'none',axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle('% Response for Each Categorical Variables')
+g
+```
+
+Numerical Variables
+=====================================
+
+Inputs {.sidebar}
+-------------------------------------
+<br/>
+
+<strong>Numerical Variable</strong> คือตัวแปรที่มีค่าเป็นตัวเลข เช่น อายุ น้ำหนัก ส่วนสูง หรือตัวแปรที่เราต้องการให้ผู้ตอบแบบสอนถามประเมินค่าเป็นตัวเลข เช่น ความแข็งแรงของร่างกาย ความหล่อ/สวย
+
+แผนภูมิทางด้านขวาคือ Histogram ที่แสดงถึงการกระจายตัวของตัวแปรต่อไปนี้
+
+age: อายุ<br/>
+weight: นำ้หนักุ<br/>
+height: ส่วนสูงุ<br/>
+gpa: เกรดุ<br/>
+past: จำนวนแฟนในอดีตุ<br/>
+siblings: จำนวนพี่น้องุ<br/>
+physical: ความแข็งแรงของร่างกายุ<br/>
+attract: ความหล่อ/สวยุ<br/>
+social: ความชอบเข้าสังคมุ<br/>
+reason: การใช้เหตุผลุ<br/>
+judge: การตัดสินคนุ<br/>
+evidence: ความเชื่อในหลักฐานุ<br/>
+
+Column
+-------------------------------------
+
+```{r, fig.width=10,fig.height=7, fig.align='center'}
+descript_m = readRDS(paste0(input_path,'descript_m.rds'))
+
+g<-ggplot(descript_m,aes(x=value,fill=variable)) + geom_histogram() + 
+  facet_wrap(~variable,scales=c('free')) + theme_fivethirtyeight() +
+  theme(legend.position = 'none') + ggtitle('Distribution of Numerical Variables')
+g
+```
+
+Correlogram
+=====================================
+
+Inputs {.sidebar}
+-------------------------------------
+
+<br/>
+
+<strong>Correlogram</strong> แสดง Correlation หรือความสัมพันธ์ระหว่างตัวแปรทุกคู่ โดยมีค่าตั้งแต่ -1 จนถึง 1
+
+หาก Correlation = 1 หมายถึง ความสัมพันธ์ในทางบวกโดยสมบูรณ์ (สีน้ำเงิน)
+
+หาก Correlation = -1 หมายถึง ความสัมพันธ์ในทางบวกโดยสมบูรณ์ (สีแดง)
+
+หาก Correlation = 0 หมายถึง ไม่มีความสัมพันธ์ระหว่างตัวแปรคู่นั้น
+
+เราดู Correlogram เพื่อสังเกตว่าตัวแปรต้นตัวไหน (เกรด น้ำหนัก ฯลฯ) มีความน่าจะเป็นที่จะส่งผลต่อตัวแปรตาม (มีแฟน/ไม่มีแฟน) มากที่สุด เพื่อนำไปสร้างโมเดลต่อไป
+
+สิ่งที่ควรระวังคือ Correlation บอกเราถึงความสัมพันธ์ของตัวแปรแต่ไม่ได้บอกถึงการเกิดก่อนหลัง เช่น แม้น้ำหนักกับการมีแฟนจะมี Correlation ไปในทางลบ เราก็ไม่สามารถสรุปได้จากข้อมูลนี้เพียงอย่างเดียวว่าคนมีแฟนแล้วจะผอม หรือว่าคนผอมมีโอกาสมีแฟนมากกว่า
+
+Column
+-------------------------------------
+
+```{r, fig.width=10,fig.height=7, fig.align='center'}
+M <- cor(survey_sample)
+d3heatmap(M, scale='column') 
+```
+
+Decision Tree
+=====================================
+
+Inputs {.sidebar}
+-------------------------------------
+
+<br/>
+
+<strong>Model</strong> คือการตัดสินใจจากตัวแปรต้น (น้ำหนัก เกรด ฯลฯ) ว่าตัวแปรตาม (มีแฟน/ไม่มีแฟน) ควรจะมีค่าเท่าไหร่ ในกรณีนี้คือ "ความน่าจะเป็นที่จะมีแฟน"
+
+ในกรณีนี้เราใช้โมเดลที่มีพื้นฐานมาจากสิ่งที่เรียกว่า Decision Tree คือการไล่ตอบคำถามเกี่ยวกับตัวแปรตามไปเรื่อยๆจนแบ่งแยกข้อมูลแบบสอบถามได้เป็นสองกลุ่ม
+
+แผนภูมิทางขวาแสดงหนึ่งใน Decision Tree ของเรา แปลผลได้ดังต่อไปนี้
+
+1. หากคุณไม่เคยมีแฟนมาก่อน ให้ไปที่ 2. หากเคยให้ไปที่ 3.
+2. หากคุณไม่ชอบเล่นกีฬาในยามว่าง คุณไม่มีแฟน หากชอบคุณมีแฟน
+3. หากคุณน้ำหนักมากกว่า 54 kg คุณไมมีแฟน หากน้อยกว่าให้ไปที่ 4.
+4. หากคุณเคยมีแฟนน้อยกว่า 1.5 คน คุณไม่มีแฟน หากมากกว่าคุณมีแฟน
+
+Column
+-------------------------------------
+```{r, fig.width=10,fig.height=7, fig.align='center'}
+fit_rpart = readRDS(paste0(input_path,'fit_rpart.rds'))
+rpart.plot(fit_rpart)
+```
+
+Feature Importance
+=====================================
+
+Inputs {.sidebar}
+-------------------------------------
+<br/>
+
+<strong>Feature Importance</strong> บ่งบอกถึงความสำคัญของแต่ละตัวแปรต้น (น้ำหนัก จำนวนแฟนเก่า) ต่อตัวแปรตาม (มีแฟน/ไม่มีแฟน) ยิ่งสูงเท่าไหร่ยิ่งมีความสำคัญในด้านบวก (สีน้ำเงิน) หรือด้านลบ (สีแดง) มากขึ้นเท่านั้น เช่นในกรณีนี้จำนวนแฟนเก่ามีความสำคัญด้านบวกเยอะที่สุด กล่าวคือหากคุณเคยมีแฟนมาแล้วก็มีโอกาสที่จะได้แฟนอีกมากที่สุด
+
+
+Column
+-------------------------------------
+```{r, fig.width=10,fig.height=7, fig.align='center'}
+importance = readRDS(paste0(input_path,'importance.rds'))
+g = ggplot(importance[1:10,], aes(x=reorder(Feature,-Gain),y=Gain/100,fill=sign)) + geom_bar(stat='identity') +
+  scale_y_continuous(labels = scales::percent) + theme_fivethirtyeight() + scale_fill_wsj() +
+  ggtitle('Top 10 Most Important Variables') + coord_flip() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+g
+```
+
+
+Evaluation
+=====================================
+
+Inputs {.sidebar}
+-------------------------------------
+<br/>
+
+<strong>Evaluation</strong> คือการประเมินผลการทำนายของโมเดล ส่วนใหญ่เราจะทำโดยการแบ่งชุดข้อมูลจากแบบสอบถามออกเป็นสองชุด ชุดหนึ่งเราจะใช้ในการสร้างโมเดล (Training Set) อีกชุดหนึ่งเราจะเก็บไว้ใช้ทำนายผล (Test Set)
+
+Confusion Matrix คือตารางผลการทำนาย (Predicted; แกนตั้ง) และตัวแปรตามที่แท้จริง (Actual; แกนนอน) ของผู้ตอบแบบสอบถามใน Test Set 
+
+ช่องสีฟ้าคือกรณีที่โมเดลทำนายถูก คือทำนายว่ามีแฟนหรือไม่มีแฟน แล้วพอเทียบกับคำตอบในแบบสอบถามก็เป็นเช่นนั้นจริง ช่องสีเหลืองคือกรณีที่ทายว่ามีแล้วไม่มี (False Positive) หรือทายว่าไม่มีแต่จริงๆมี (False Negative)
+
+การประเมินว่าโมเดลของเราดีแค่ไหนนั้นยังทำได้ด้วยค่าอื่นๆอีกมากมาย เช่น
+
+Accuracy: ความแม่นยำในการทำนาย (จำนวนตัวเลขในช่องสีฟ้า / จำนวนผู้ตอบแบบสอบถามใน Test Set ทั้งหมด)
+
+ในกรณีนี้จะเห็นได้ว่าโมเดลของเราสามารถทำนายได้แม่นยำถึง 85%
+
+
+Column
+-------------------------------------
+```{r, fig.width=10,fig.height=7, fig.align='center'}
+cm = readRDS(paste0(input_path,'cm.rds'))
+
+#https://stackoverflow.com/questions/23891140/r-how-to-visualize-confusion-matrix-using-the-caret-package
+draw_confusion_matrix <- function(cm) {
+
+  layout(matrix(c(1,1,2)))
+  par(mar=c(2,2,2,2))
+  plot(c(100, 345), c(300, 450), type = "n", xlab="", ylab="", xaxt='n', yaxt='n')
+  title('Confusion Matrix', cex.main=2)
+
+  # create the matrix 
+  rect(150, 430, 240, 370, col='#3F97D0')
+  text(195, 435, 'No', cex=1.2)
+  rect(250, 430, 340, 370, col='#F7AD50')
+  text(295, 435, 'Yes', cex=1.2)
+  text(125, 370, 'Predicted', cex=1.3, srt=90, font=2)
+  text(245, 450, 'Actual', cex=1.3, font=2)
+  rect(150, 305, 240, 365, col='#F7AD50')
+  rect(250, 305, 340, 365, col='#3F97D0')
+  text(140, 400, 'No', cex=1.2, srt=90)
+  text(140, 335, 'Yes', cex=1.2, srt=90)
+
+  # add in the cm results 
+  res <- as.numeric(cm$table)
+  text(195, 400, res[1], cex=1.6, font=2, col='white')
+  text(195, 335, res[2], cex=1.6, font=2, col='white')
+  text(295, 400, res[3], cex=1.6, font=2, col='white')
+  text(295, 335, res[4], cex=1.6, font=2, col='white')
+
+  # add in the specifics 
+  plot(c(100, 0), c(100, 0), type = "n", xlab="", ylab="", main = "Evaluation Metrics", xaxt='n', yaxt='n')
+  text(20, 65, names(cm$byClass[1]), cex=1.2, font=2)
+  text(20, 50, round(as.numeric(cm$byClass[1]), 3), cex=1.2)
+  text(40, 65, names(cm$byClass[2]), cex=1.2, font=2)
+  text(40, 50, round(as.numeric(cm$byClass[2]), 3), cex=1.2)
+  text(60, 65, names(cm$byClass[5]), cex=1.2, font=2)
+  text(60, 50, round(as.numeric(cm$byClass[5]), 3), cex=1.2)
+  text(80, 65, names(cm$overall[1]), cex=1.2, font=2)
+  text(80, 50, round(as.numeric(cm$overall[1]), 3), cex=1.2)
+
+}  
+
+draw_confusion_matrix(cm)
+```
